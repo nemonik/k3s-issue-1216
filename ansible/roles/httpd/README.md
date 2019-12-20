@@ -1,7 +1,7 @@
 Role Name
 =========
 
-Configures GitLab.
+Configures httpd.
 
 License
 -------
