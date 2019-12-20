@@ -7,8 +7,8 @@
 # You should have received a copy of the license with
 # this file. If not, please email <mjwalsh@nemonik.com>
 
-#vagrant up server
-#vagrant up agent
+vagrant up server
+vagrant up agent
 
 # should be wicked fast
 echo from localhost:
