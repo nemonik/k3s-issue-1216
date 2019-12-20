@@ -1,0 +1,17 @@
+controller ansible_connection=local ansible_python_interpreter=/usr/bin/python2
+agent ansible_connection=local ansible_host=192.168.0.10 ansible_python_interpreter=/usr/bin/python2
+server ansible_connection=local ansible_host=192.168.0.11 ansible_python_interpreter=/usr/bin/python2
+
+[boxes]
+box
+
+[nodes]
+agent
+server
+
+[agents]
+agent
+
+[servers]
+server
+

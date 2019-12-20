@@ -1,0 +1,148 @@
+---
+# tasks file for k3s-server
+
+# Copyright (C) 2019 Michael Joseph Walsh - All Rights Reserved
+# You may use, distribute and modify this code under the
+# terms of the the license.
+#
+# You should have received a copy of the license with
+# this file. If not, please email <mjwalsh@nemonik.com>
+
+- name: ensure /home/{{ ansible_user_id }}/k3s exists
+  file:
+    path: /home/{{ ansible_user_id }}/k3s
+    state: directory
+  tags:
+    - k3s-server
+
+- name: Populate service facts
+  service_facts:
+  tags:
+    - k3s-server
+
+- debug:
+    msg: K3s installed!
+  when: 
+    "'k3s' in services"
+  tags:
+    - k3s-server
+
+- name: am i in the docker group?
+  shell: groups
+  tags:
+    - k3s-server
+
+- name: install and spin up k3s, if needed
+  block:
+  - name: ensure /var/lib/rancher/k3s/agent/images/ exists
+    become: yes
+    file:
+      path: /var/lib/rancher/k3s/agent/images/
+      state: directory
+
+  - name: install airgap images
+    become: yes
+    unarchive:
+      src: https://github.com/rancher/k3s/releases/download/{{ k3s_version }}/k3s-airgap-images-amd64.tar
+      dest: /var/lib/rancher/k3s/agent/images/
+      remote_src: yes
+      creates: /var/lib/rancher/k3s/agent/images/manifest.json
+
+    retries: "{{ default_retries }}"
+    delay: "{{ default_delay }}"
+    register: result
+    until: result is succeeded
+
+  - name: emplace install_k3s script
+    get_url:
+      url: https://get.k3s.io
+      dest: /home/{{ ansible_user_id }}/k3s/install_k3s.sh
+      mode: u=rwx,g=r,o=r
+    retries: "{{ default_retries }}"
+    delay: "{{ default_delay }}"
+    register: result
+    until: result is succeeded
+
+  - name: install K3s 
+    become: yes
+    shell: INSTALL_K3S_VERSION={{ k3s_version }} INSTALL_K3S_EXEC="--flannel-iface={{ k3s_flannel_iface }} --cluster-secret={{ k3s_cluster_secret }} --docker --no-deploy traefik" /home/{{ ansible_user_id }}/k3s/install_k3s.sh
+   
+  - name: alias `kubectl` to `k3s kubectl`
+    become: yes
+    copy:
+      dest: /etc/profile.d/alias_kubectl.sh
+      content: |
+        alias kubectl="k3s kubectl"
+  when:  
+    "'k3s' not in services"
+  tags:
+    - k3s-server
+
+- name: start and enable k3s service
+  become: yes
+  service:
+    name: k3s
+    enabled: yes
+    state: started
+  tags:
+    - k3s-server
+
+- name: get uid for /vagrant/Vagranfile
+  become: yes
+  shell: echo $(stat -c '%U' /vagrant/Vagrantfile)
+  register: owner
+  tags:
+    - k3s-server
+
+- name: ensure traefik is running
+  block:
+  - name: ensure /home/{{ ansible_user_id }}/traefik exists
+    file:
+      path: /home/{{ ansible_user_id }}/traefik
+      state: directory
+
+  - name: ensure traefik.yml is in place at /home/{{ ansible_user_id }}/traefik
+    template:
+      src: templates/traefik.yml.j2
+      dest: /home/{{ ansible_user_id }}/traefik/traefik.yml
+      force: yes
+      mode: u=rw,g=r
+
+  - name: ensure traefik is running
+    become: yes
+    shell: kubectl apply -f /home/{{ ansible_user_id }}/traefik/traefik.yml
+  tags:
+    - k3s-server
+    - traefik
+
+- name: ensure {{ ansible_user_id }} can access Kubernetes 
+  block:
+  - name: ensure the {{ ansible_user_id }} user has an kubeconfig.yml file to access kubernetes
+    become: yes    
+    copy:
+      src: /etc/rancher/k3s/k3s.yaml
+      dest: /home/{{ ansible_user_id }}/kubeconfig.yml
+      remote_src: yes      
+      owner: "{{ ansible_user_id }}"
+      group: "{{ ansible_user_id }}"
+      mode: u=rw,g=r
+
+  - name: ensure https://127.0.0.1:6443 is replaced with https://{{ hostvars[ansible_nodename].ansible_host }}:6443 in /home/{{ ansible_user_id }}/kubeconfig.yml
+    replace:
+      path: /home/{{ ansible_user_id }}/kubeconfig.yml
+      regexp: '^    server: https://127.0.0.1:6443'
+      replace: '    server: https://{{ hostvars[ansible_nodename].ansible_host }}:6443'
+ 
+  - name: ensure KUBECONFIG is removed from {{ ansible_user_id }}'s bash_profile
+    lineinfile:
+      dest: /home/{{ ansible_user_id }}/.bash_profile
+      regexp: '^export KUBECONFIG'
+      state: absent
+
+  - name: ensure KUBECONFIG is in {{ ansible_user_id }}'s bash_profile
+    lineinfile:
+      dest:  /home/{{ ansible_user_id }}/.bash_profile
+      line: 'export KUBECONFIG="/home/{{ ansible_user_id }}/kubeconfig.yml"'
+      insertafter: EOF
+  tags:
+    - k3s-server

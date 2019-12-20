@@ -1,0 +1,26 @@
+# OS-specific
+.DS_Store
+
+# Ansible
+*.retry
+cookies.txt
+# vault_pass
+
+# Vagrant
+.vagrant/
+*.vdi
+*.box
+vagrant_private_key
+ansible/cookies.txt
+*.md.bak
+
+# Packer
+box/packer_cache
+
+# InSpec
+inspec_hellworld.json
+
+# Kubernetes / K3s
+*.K3S_TOKEN.yml
+*.kubeconfig.yml
+*.vagrant-token.yml

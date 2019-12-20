@@ -1,0 +1,41 @@
+---
+# tasks file for gitlab
+
+# Copyright (C) 2019 Michael Joseph Walsh - All Rights Reserved
+# You may use, distribute and modify this code under the
+# terms of the the license.
+#
+# You should have received a copy of the license with
+# this file. If not, please email <mjwalsh@nemonik.com>
+
+- name: ensure /home/{{ ansible_user_id }}/gitlab exists
+  file:
+    path: /home/{{ ansible_user_id }}/gitlab
+    state: directory
+  tags:
+    - gitlab
+
+- name: spin up GitLab via Kubernetes
+  block:
+  - name: template kubernetes resource files into /home/{{ ansible_user_id }}/gitlab
+    template:
+      src: templates/gitlab.yml.j2  
+      dest: /home/{{ ansible_user_id }}/gitlab/gitlab.yml
+      force: yes
+
+  - name: spin up via kubectl
+    shell: kubectl --kubeconfig=/home/{{ ansible_user_id }}/kubeconfig.yml apply -f gitlab.yml
+    args:
+      chdir: /home/{{ ansible_user_id }}/gitlab
+
+  - name: wait for GitLab to be available
+    uri:
+      url: http://{{ hostvars['server']['ansible_host'] }}:{{ gitlab_port }}/users/sign_in
+      status_code: 200
+    register: result
+    until: result.status == 200
+    retries: 60
+    delay: 5
+
+  tags:
+    - gitlab
